@@ -2,7 +2,7 @@ name: Update persistent envs develop branches
 on:
   push:
     branches:
-      - master
+      - main
 
 jobs:
   updateDevelopBranches:
