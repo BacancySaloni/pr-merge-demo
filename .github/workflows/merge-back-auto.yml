@@ -1,0 +1,44 @@
+name: Update persistent envs develop branches
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  updateDevelopBranches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch branches and trigger workflow
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { repo: { owner, repo }, ref } = context;
+
+            github.paginate(github.rest.repos.listBranches, {
+              owner,
+              repo
+            })
+            .then(branches => {
+              // define the branches to be excluded - temporary fix until we move these envs to GD
+              const excludedBranches = ["cas-develop", "apl-develop"];
+
+              // filter the branches to get only those ending with '-develop' and not in the excluded list
+              const developBranches = branches.filter(branch => branch.name.startsWith('hdev-') && !excludedBranches.includes(branch.name));
+
+              for (const { name } of developBranches) {
+                // trigger the 'merge-back-workflow' for each branch
+                console.log(`Triggering merge back worflow for branch ${name}`);
+                github.rest.actions.createWorkflowDispatch({
+                  owner,
+                  repo,
+                  workflow_id: '.github/workflows/merge-back-workflow.yml',
+                  ref: ref.replace('refs/heads/', ''),
+                  inputs: { 'target-branch': name, 'assignee': "${{ github.actor }}" },
+                });
+              }
+            })
