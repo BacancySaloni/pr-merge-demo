@@ -1,0 +1,80 @@
+name: Create merge back PR workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      assignee:
+        required: true
+        type: string
+      target-branch:
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      assignee:
+        required: true
+        type: string
+      target-branch:
+        required: true
+        type: string
+    outputs:
+      pull-request-url:
+        description: "Pull request URL"
+        value: ${{jobs.createMergeBackPR.outputs.pull-request-url}}
+
+jobs:
+  createMergeBackPR:
+    outputs:
+      pull-request-url: ${{ steps.create-pr.outputs.result }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.YOUR_PAT_SECRET_NAME }}
+      - name: Create merge branch
+        id: create-merge-branch
+        run: |
+          # Create dev branch for merge
+          devbranch=dev-update-$(echo $RANDOM | md5sum | head -c 7)
+          git checkout -b $devbranch
+
+          # Push changes
+          git push --set-upstream origin $devbranch
+          echo ::set-output name=target-branch::$devbranch
+      - name: Create PR
+        id: create-pr
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.YOUR_PAT_SECRET_NAME }}
+          result-encoding: string
+          script: |
+            const pr = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: "${{ steps.create-merge-branch.outputs.target-branch }}",
+              base: "${{ inputs.target-branch }}",
+              title: "Pulling ${{ github.ref }} into ${{ inputs.target-branch }}",
+            })
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.data.number,
+              assignees: ["${{ inputs.assignee }}"],
+            })
+            try {
+              const merge = await github.rest.pulls.merge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.data.number,
+                merge_method: "merge",
+                commit_title: `Update develop branch (#${pr.data.number})`,
+              })
+              if (merge.data.merged) {
+                console.log(`Pull request #${pr.data.number} was merged automatically`)
+              } else {
+                console.error(`Pull request #${pr.data.number} needs manual intervention`)
+              }
+            } catch (e) {
+              console.error(e)
+            }
+            return pr.data.html_url
