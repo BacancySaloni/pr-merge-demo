@@ -45,7 +45,7 @@ jobs:
         id: create-pr
         uses: actions/github-script@v6
         with:
-          token: ${{ secrets.YOUR_PAT_SECRET_NAME }}
+          github-token: ${{ secrets.YOUR_PAT_SECRET_NAME }}
           result-encoding: string
           script: |
             const pr = await github.rest.pulls.create({
