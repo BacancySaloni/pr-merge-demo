@@ -18,17 +18,6 @@ jobs:
           script: |
             const { repo: { owner, repo }, ref } = context;
             
-            // First, get all open PRs
-            const openPRs = await github.paginate(github.rest.pulls.list, {
-              owner,
-              repo,
-              state: 'open'
-            });
-            
-            // Extract the target branches from open PRs
-            const branchesWithOpenPRs = new Set(openPRs.map(pr => pr.base.ref));
-            console.log(`Branches with open PRs: ${Array.from(branchesWithOpenPRs).join(', ')}`);
-            
             // Get all branches
             const branches = await github.paginate(github.rest.repos.listBranches, {
               owner,
@@ -38,20 +27,39 @@ jobs:
             // define the branches to be excluded - temporary fix until we move these envs to GD
             const excludedBranches = ["cas-develop", "apl-develop"];
             
-            // filter the branches to get only those:
-            // 1. Ending with '-develop'
-            // 2. Not in the excluded list
-            // 3. Having open PRs
-            const developBranches = branches.filter(branch => 
+            // First, filter branches that start with 'hdev-' and aren't excluded
+            const eligibleBranches = branches.filter(branch => 
               branch.name.startsWith('hdev-') && 
-              !excludedBranches.includes(branch.name) &&
-              branchesWithOpenPRs.has(branch.name)
+              !excludedBranches.includes(branch.name)
             );
             
-            console.log(`Filtered branches with open PRs: ${developBranches.map(b => b.name).join(', ')}`);
+            console.log(`Eligible branches: ${eligibleBranches.map(b => b.name).join(', ')}`);
             
-            for (const { name } of developBranches) {
-              // trigger the 'merge-back-workflow' for each branch
+            // Get all open PRs
+            const openPRs = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: 'open'
+            });
+            
+            // Create a map of branch names to their open PRs
+            const branchPRMap = {};
+            openPRs.forEach(pr => {
+              if (!branchPRMap[pr.base.ref]) {
+                branchPRMap[pr.base.ref] = [];
+              }
+              branchPRMap[pr.base.ref].push(pr);
+            });
+            
+            // Filter branches that have open PRs
+            const branchesWithOpenPRs = eligibleBranches.filter(branch => 
+              branchPRMap[branch.name] && branchPRMap[branch.name].length > 0
+            );
+            
+            console.log(`Branches with open PRs: ${branchesWithOpenPRs.map(b => b.name).join(', ')}`);
+            
+            // For each branch with open PRs, trigger the merge-back workflow
+            for (const { name } of branchesWithOpenPRs) {
               console.log(`Triggering merge back workflow for branch ${name}`);
               await github.rest.actions.createWorkflowDispatch({
                 owner,
