@@ -1,4 +1,6 @@
 # pr-merge-demo
 
-feature1
-feature1
+
+feature2
+feature3
+
