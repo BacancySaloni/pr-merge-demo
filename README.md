@@ -6,3 +6,4 @@ feature3
 
 
 new feature2
+new feature1
