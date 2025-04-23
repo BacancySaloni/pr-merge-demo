@@ -5,7 +5,4 @@ feature2
 feature3
 
 
-new feature3
-new feature1
-
-
+new feature2
