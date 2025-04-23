@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - main
-
 jobs:
   updateDevelopBranches:
     runs-on: ubuntu-latest
@@ -12,34 +11,53 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Fetch branches and trigger workflow
+      - name: Fetch branches with open PRs and trigger workflow
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.YOUR_PAT_SECRET_NAME }}
           script: |
             const { repo: { owner, repo }, ref } = context;
-
-            github.paginate(github.rest.repos.listBranches, {
+            
+            // First, get all open PRs
+            const openPRs = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: 'open'
+            });
+            
+            // Extract the target branches from open PRs
+            const branchesWithOpenPRs = new Set(openPRs.map(pr => pr.base.ref));
+            console.log(`Branches with open PRs: ${Array.from(branchesWithOpenPRs).join(', ')}`);
+            
+            // Get all branches
+            const branches = await github.paginate(github.rest.repos.listBranches, {
               owner,
               repo
-            })
-            .then(branches => {
-              // define the branches to be excluded - temporary fix until we move these envs to GD
-              const excludedBranches = ["cas-develop", "apl-develop"];
-
-              // filter the branches to get only those ending with '-develop' and not in the excluded list
-              const developBranches = branches.filter(branch => branch.name.startsWith('hdev-') && !excludedBranches.includes(branch.name));
-
-              for (const { name } of developBranches) {
-                // trigger the 'merge-back-workflow' for each branch
-                console.log(`Triggering merge back worflow for branch ${name}`);
-                github.rest.actions.createWorkflowDispatch({
-                  owner,
-                  repo,
-                  workflow_id: '.github/workflows/merge-back.yml',
-                  ref: ref.replace('refs/heads/', ''),
-                  inputs: { 'target-branch': name, 'assignee': "${{ github.actor }}" },
-                });
-              }
-            })
+            });
+            
+            // define the branches to be excluded - temporary fix until we move these envs to GD
+            const excludedBranches = ["cas-develop", "apl-develop"];
+            
+            // filter the branches to get only those:
+            // 1. Ending with '-develop'
+            // 2. Not in the excluded list
+            // 3. Having open PRs
+            const developBranches = branches.filter(branch => 
+              branch.name.startsWith('hdev-') && 
+              !excludedBranches.includes(branch.name) &&
+              branchesWithOpenPRs.has(branch.name)
+            );
+            
+            console.log(`Filtered branches with open PRs: ${developBranches.map(b => b.name).join(', ')}`);
+            
+            for (const { name } of developBranches) {
+              // trigger the 'merge-back-workflow' for each branch
+              console.log(`Triggering merge back workflow for branch ${name}`);
+              await github.rest.actions.createWorkflowDispatch({
+                owner,
+                repo,
+                workflow_id: '.github/workflows/merge-back.yml',
+                ref: ref.replace('refs/heads/', ''),
+                inputs: { 'target-branch': name, 'assignee': "${{ github.actor }}" },
+              });
+            }
