@@ -36,7 +36,7 @@ jobs:
                 github.rest.actions.createWorkflowDispatch({
                   owner,
                   repo,
-                  workflow_id: '.github/workflows/merge-back-workflow.yml',
+                  workflow_id: '.github/workflows/merge-back.yml',
                   ref: ref.replace('refs/heads/', ''),
                   inputs: { 'target-branch': name, 'assignee': "${{ github.actor }}" },
                 });
