@@ -8,4 +8,3 @@ new feature1
 Test3
 
 test2
-
