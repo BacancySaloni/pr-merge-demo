@@ -1,5 +1,4 @@
 name: Create merge back PR workflow
-
 on:
   workflow_dispatch:
     inputs:
@@ -21,7 +20,6 @@ on:
       pull-request-url:
         description: "Pull request URL"
         value: ${{jobs.createMergeBackPR.outputs.pull-request-url}}
-
 jobs:
   createMergeBackPR:
     outputs:
@@ -37,10 +35,9 @@ jobs:
           # Create dev branch for merge
           devbranch=dev-update-$(echo $RANDOM | md5sum | head -c 7)
           git checkout -b $devbranch
-
           # Push changes
           git push --set-upstream origin $devbranch
-          echo ::set-output name=target-branch::$devbranch
+          echo "target-branch=$devbranch" >> $GITHUB_OUTPUT
       - name: Create PR
         id: create-pr
         uses: actions/github-script@v6
@@ -48,10 +45,11 @@ jobs:
           github-token: ${{ secrets.YOUR_PAT_SECRET_NAME }}
           result-encoding: string
           script: |
+            const temporaryBranch = "${{ steps.create-merge-branch.outputs.target-branch }}";
             const pr = await github.rest.pulls.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              head: "${{ steps.create-merge-branch.outputs.target-branch }}",
+              head: temporaryBranch,
               base: "${{ inputs.target-branch }}",
               title: "Pulling ${{ github.ref }} into ${{ inputs.target-branch }}",
             })
@@ -71,6 +69,18 @@ jobs:
               })
               if (merge.data.merged) {
                 console.log(`Pull request #${pr.data.number} was merged automatically`)
+                
+                // Delete the temporary branch after successful merge
+                try {
+                  await github.rest.git.deleteRef({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    ref: `heads/${temporaryBranch}`
+                  });
+                  console.log(`Successfully deleted temporary branch: ${temporaryBranch}`);
+                } catch (deleteError) {
+                  console.error(`Failed to delete temporary branch ${temporaryBranch}: ${deleteError.message}`);
+                }
               } else {
                 console.error(`Pull request #${pr.data.number} needs manual intervention`)
               }
